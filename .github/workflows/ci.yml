@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      # The client bundle is a hand-written classic script that ships as-is, so
+      # its integrity check is a build gate here, not a test detail.
+      - run: npm run check
+
+  test:
+    name: test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  package:
+    name: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      # A published artifact that cannot load is worse than no release, so the
+      # packed contents are asserted, not just the source tree.
+      - name: Pack and assert the payload
+        run: |
+          npm pack --dry-run
+          npm pack --pack-destination /tmp
+          tar -xzf /tmp/jianghuifr-dsh-mobile-ui-*.tgz -C /tmp
+          test -f /tmp/package/assets/index.json
+          test "$(ls /tmp/package/assets/icons/*.svg | wc -l)" -gt 1000
+          grep -q '"@jianghuifr/dsh-mobile-ui"' /tmp/package/cordis.patch.yml
+          grep -q "@jianghuifr/dsh-mobile-ui" /tmp/package/lib/client.js
+      - name: Ensure npm supports staged publishing
+        run: npm install -g npm@latest
+      # Dry-run the real release command. The version is a throwaway
+      # prerelease: once a version is published the registry refuses to
+      # overwrite it, so dry-running the real one would turn CI red after every
+      # release — a state that is not an error. A prerelease needs an explicit
+      # --tag.
+      - name: Verify the release command (dry run)
+        run: |
+          npm version --no-git-tag-version --force "0.0.0-ci-dryrun.$(date +%s)" >/dev/null
+          npm stage publish --dry-run --tag ci-dryrun

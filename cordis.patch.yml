@@ -1,0 +1,15 @@
+# 组合包层：`dsh plugin --profile <name> add link:<本目录>` 安装本包时应用。
+#
+# 插件行按包名引用（不是相对路径），这样 Node 的模块解析才能从 profile 目录
+# 找到已安装的代码。
+#
+# 名字必须是完整包名：client-modules 用 **package.json 的 name** 作为客户端条目的 id，
+# 而浏览器端要求 bundle 注册的 id 与条目 id 完全一致。
+#
+# 这一行就是全部的服务端存在：本插件没有服务端行为，`lib/index.js` 是空实现。
+# 它存在的唯一理由是 client-modules 的扫描以 **Loader 行**为入口 —— 没有行就
+# 没有行 id，也就没有客户端 bundle 的注册 id。
+- insert:
+    - id: mobile-ui
+      # @ 是 YAML 保留起始字符，必须加引号
+      name: "@jianghuifr/dsh-mobile-ui"
