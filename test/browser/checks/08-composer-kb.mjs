@@ -11,7 +11,7 @@
  * input box drifted to the top".
  */
 
-import { createReporter, open, openSession, sleep } from '../harness.mjs'
+import { createReporter, open, ensureSession, sleep } from '../harness.mjs'
 
 const FULL = 844
 const KEYBOARD = 320
@@ -36,8 +36,8 @@ export async function run(page, url) {
   const report = createReporter('COMPOSER-KB')
 
   await open(page, url, { height: FULL })
-  if (!(await openSession(page))) {
-    report.check(false, 'no session row to open')
+  if (!(await ensureSession(page))) {
+    report.check(false, 'no usable session, and one could not be created')
     report.finish()
     return
   }

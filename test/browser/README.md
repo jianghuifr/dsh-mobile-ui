@@ -21,18 +21,38 @@ count and a real tap do.
 ## Running
 
 ```bash
-# against an instance you already have
-DSH_BROWSER_URL='http://127.0.0.1:3099/?token=…' npm run test:browser
-
-# or let it boot a throwaway host in a scratch DSH_HOME
+# self-contained: boots its own throwaway host
 node test/browser/run.mjs --boot
+
+# or against an instance you already have
+DSH_BROWSER_URL='http://127.0.0.1:3099/?token=…' npm run test:browser
 
 node test/browser/run.mjs --url <url> --filter enter   # one check
 node test/browser/run.mjs --url <url> --headful        # watch it
 ```
 
-The URL is the tokenized one `dsh web` prints. `--boot` needs `dsh` on `PATH`
-and links this package into a temporary profile, so nothing of yours is touched.
+The URL is the tokenized one `dsh web` prints. `--boot` needs `dsh` on `PATH`;
+it links this package into a temporary profile and tears the whole thing down
+afterwards, so nothing of yours is touched.
+
+## What `--boot` sets up, and why
+
+A bare profile is not a usable phone host, and each gap made checks fail for a
+reason unrelated to the plugin — so the runner closes them:
+
+- **a workspace.** Without one the composer is replaced by a "choose a
+  workspace" prompt, so the send button is inert and every composer assertion
+  measures nothing.
+- **the path recorded as a realpath.** On macOS both `/tmp` and `/var` are
+  symlinks, so `mkdtempSync` returns `/var/folders/…` whose realpath is
+  `/private/var/folders/…`. A workspace stored under the symlinked form never
+  becomes usable — silently, with no error anywhere. This is worth knowing if
+  you ever hand-write `storages/workspace.json`: store the realpath.
+- **the browse directory picker pin.** `directory-picker-auto` samples the host
+  once at boot, and a loopback bind on macOS resolves to the native backend, so
+  "add workspace" opens Finder on the host. A host configured for phone access
+  pins `browse` (see the main README); `--boot` writes that pin so the picker
+  check is not asserting against a knowingly-wrong host.
 
 ## What they need
 
@@ -40,12 +60,13 @@ and links this package into a temporary profile, so nothing of yours is touched.
 |---|---|
 | Chrome | `/Applications/Google Chrome.app` by default; headless |
 | `ws` | reused from the global dsh install, so there is nothing to `npm install` |
-| a host | with this plugin active |
-| a workspace + at least one session | for the checks that open the explorer or the header |
-| model credentials | only for the checks that submit a message |
+| `dsh` on PATH | only for `--boot` |
+| model credentials | only for the checks that submit a message; `--boot` symlinks yours if present, and `ensureSession` creates a session when the host has none |
 
 They are **not** part of `npm test` or CI: they need a browser, a live host, and
 sometimes a model call. Run them by hand before a release.
+
+Both paths are green: `--boot` and a prepared instance each pass **9/9**.
 
 ## The checks
 

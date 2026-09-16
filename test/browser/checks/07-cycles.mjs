@@ -10,7 +10,7 @@
  * sidebar and inherits `pointer-events` from it.
  */
 
-import { createReporter, open, openSession, openDrawer, NAV } from '../harness.mjs'
+import { createReporter, open, ensureSession, openDrawer, NAV } from '../harness.mjs'
 
 const PROBE = `(() => {
   const reach = (sel) => {
@@ -79,8 +79,8 @@ export async function run(page, url) {
   const report = createReporter('CYCLES')
 
   await open(page, url)
-  if (!(await openSession(page))) {
-    report.check(false, 'no session row to open')
+  if (!(await ensureSession(page))) {
+    report.check(false, 'no usable session, and one could not be created')
     report.finish()
     return
   }

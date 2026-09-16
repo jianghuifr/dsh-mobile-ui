@@ -20,7 +20,7 @@
  */
 
 import { spawn } from 'node:child_process'
-import { mkdtempSync, rmSync, existsSync, mkdirSync, symlinkSync } from 'node:fs'
+import { mkdtempSync, rmSync, existsSync, mkdirSync, symlinkSync, writeFileSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -64,6 +64,51 @@ async function bootHost({ port = 3099 } = {}) {
     if (existsSync(from)) symlinkSync(from, join(home, name))
   }
 
+  // Seed a workspace, with files varied enough to give the icon check real
+  // extensions to resolve.
+  const workspaceDir = join(home, 'workspace')
+  mkdirSync(workspaceDir, { recursive: true })
+  for (const [name, body] of [
+    ['README.md', '# scratch workspace\n'],
+    ['package.json', '{ "name": "scratch", "private": true }\n'],
+    ['index.ts', 'export const answer = 42;\n'],
+    ['app.tsx', 'export const App = () => null;\n'],
+    ['styles.css', 'body { margin: 0; }\n'],
+    ['data.json', '{}\n'],
+    ['Dockerfile', 'FROM scratch\n'],
+  ]) {
+    writeFileSync(join(workspaceDir, name), body)
+  }
+  for (const dir of ['src', 'node_modules', '.git']) mkdirSync(join(workspaceDir, dir), { recursive: true })
+
+  // Register that directory as a workspace. Without one the composer is
+  // replaced by a "choose a workspace" prompt, so the send button is inert and
+  // every check that touches the composer measures nothing.
+  //
+  // The path must be the REALPATH. On macOS both /tmp and /var are symlinks, so
+  // `mkdtempSync` hands back /var/folders/... whose realpath is
+  // /private/var/folders/... — and a workspace stored under the symlinked form
+  // never becomes usable, silently, with no error anywhere. Resolving it is the
+  // difference between a working host and one that looks like it has no
+  // workspace at all.
+  const now = new Date().toISOString()
+  mkdirSync(join(home, 'storages'), { recursive: true })
+  writeFileSync(join(home, 'storages', 'workspace.json'), JSON.stringify({
+    unit: { name: 'workspace', version: 2 },
+    global: { initialized: true, workspaceIds: ['browser-check-workspace'], archivedSessionIds: [] },
+    tables: {
+      workspaces: {
+        'browser-check-workspace': {
+          path: realpathSync(workspaceDir),
+          title: 'scratch',
+          sessionIds: [],
+          createdAt: now,
+          updatedAt: now,
+        },
+      },
+    },
+  }, null, 2))
+
   const run = (args) =>
     new Promise((resolve, reject) => {
       const child = spawn('dsh', args, { env: { ...process.env, DSH_HOME: home }, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -75,6 +120,25 @@ async function bootHost({ port = 3099 } = {}) {
     })
 
   await run(['plugin', '--profile', 'web', 'add', `link:${repo}`])
+
+  // Pin the browser directory picker, the way anyone reaching this host from a
+  // phone has to: `directory-picker-auto` samples the host once at boot, and a
+  // loopback bind on macOS resolves to the native backend — so "new workspace"
+  // opens a Finder window on the host while the operator holds a phone. Without
+  // this the picker check is asserting against a host that is configured wrong
+  // on purpose.
+  writeFileSync(join(home, 'profiles', 'web', 'cordis.patch.yml'), [
+    '# Written by test/browser/run.mjs so a throwaway host matches the setup the',
+    '# README recommends for reaching dsh from a phone.',
+    '- id: directory-picker',
+    '  disabled: true',
+    '- insert:',
+    '    - id: directory-picker-browse',
+    `      name: '@deepseek-ai/dsh-host-directory-picker-browse'`,
+    '    - id: directory-picker-browse-surface',
+    `      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'`,
+    '',
+  ].join('\n'))
 
   const child = spawn('dsh', ['--profile', 'web', '--no-open', '--host', '127.0.0.1', '--port', String(port)], {
     env: { ...process.env, DSH_HOME: home },
@@ -106,7 +170,8 @@ async function bootHost({ port = 3099 } = {}) {
   }
 }
 
-const url = value('url') ?? process.env.DSH_BROWSER_URL
+// An empty env var is "unset", not a URL: `DSH_BROWSER_URL= --boot` should boot.
+const url = value('url') ?? (process.env.DSH_BROWSER_URL || undefined)
 const filter = value('filter')
 const headful = flag('headful')
 

@@ -6,7 +6,7 @@
  * proves the host half is serving from `assets/`.
  */
 
-import { createReporter, open, openSession } from '../harness.mjs'
+import { createReporter, open, ensureSession } from '../harness.mjs'
 
 const ROWS = `(() => {
   const out = []
@@ -38,8 +38,8 @@ export async function run(page, url) {
   await page.send('Network.enable')
 
   await open(page, url)
-  if (!(await openSession(page))) {
-    report.check(false, 'no session row to open — the explorer cannot be reached')
+  if (!(await ensureSession(page))) {
+    report.check(false, 'no usable session, and one could not be created')
     report.finish()
     return
   }

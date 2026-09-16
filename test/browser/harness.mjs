@@ -149,6 +149,25 @@ export async function openSession(page, { requireComposer = true } = {}) {
 }
 
 /**
+ * Open a session that is usable, creating one if the host has none.
+ *
+ * A host can legitimately have zero sessions — a throwaway one seeded by the
+ * runner does — and then the app sits in the hero layout, where the composer is
+ * centred and the header does not exist. Sending one short message is what turns
+ * that into the ordinary conversation layout the checks describe, so this
+ * bootstraps it rather than failing every caller.
+ *
+ * @returns whether a usable session is open.
+ */
+export async function ensureSession(page) {
+  if (await openSession(page)) return true
+  console.log('  (no usable session on this host — creating one)')
+  await newSession(page)
+  await makeSessionNonBlank(page)
+  return openSession(page)
+}
+
+/**
  * Submit a short message so the session stops being blank.
  *
  * The header only renders once a session has content, so header assertions have

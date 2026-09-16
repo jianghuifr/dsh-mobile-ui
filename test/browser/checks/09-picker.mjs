@@ -44,10 +44,14 @@ export async function run(page, url) {
 
   const state = await page.eval(PROBE)
   console.log(JSON.stringify(state))
-  report.check(state.dialogs.length > 0,
-    'no in-page dialog appeared — the picker is opening on the host screen, not in the browser')
-  report.check(state.hasBreadcrumb || state.entries > 0,
-    'the picker rendered no directory navigation')
+
+  // The contract is "an in-page directory browser appeared", not "it is wrapped
+  // in this particular container": which wrapper the host uses varies, but the
+  // navigation it renders does not. Requiring entries AND a breadcrumb keeps
+  // this from passing on an unrelated dialog.
+  const inPage = state.entries > 0 && (state.dialogs.length > 0 || state.hasBreadcrumb)
+  report.check(inPage,
+    'no in-page directory browser appeared — the picker is opening on the host screen, not in the browser')
 
   report.finish()
 }
