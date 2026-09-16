@@ -114,6 +114,42 @@ dsh plugin --profile web add @jianghuifr/dsh-mobile-ui
 客户端半边不能单独存在：`@deepseek-ai/dsh-client-modules` 的扫描以 Loader 行为入口，
 所以哪怕只有客户端逻辑，也需要这一行。
 
+### 手机上点「新建工作区」却弹在 Mac 上？
+
+这是**宿主侧的配置**，不是本插件能改的，但用手机时一定会撞到。
+
+`dsh-web-app` 挂的是 `@deepseek-ai/dsh-host-directory-picker-auto`，它在**启动时采样一次**
+宿主情况来决定用哪种交互：
+
+```js
+if (bindHost !== '127.0.0.1') return 'browse'   // 非回环绑定 = 可能有远程浏览器
+if (ssh)                       return 'browse'   // 选择器会开在无人值守的服务器上
+if (darwin || win32)           return 'native'
+```
+
+**它看不到隧道。** 把 `dsh web --host 127.0.0.1` 通过 cloudflared / tailscale 暴露出去时，
+在它眼里仍然是「只有本机能连」，于是在 macOS 上选了 `native` —— 手机点「新建工作区」，
+访达弹在 Mac 上，手机上什么都不发生（实测确认：注入到页面的对话框数量为 0）。
+
+固定成网页版选择器，两端一致（`dsh-web-app` 注释里写的就是这个做法）：
+
+```yaml
+# ~/.dsh/profiles/web/cordis.patch.yml
+- id: directory-picker
+  disabled: true
+- insert:
+    - id: directory-picker-browse
+      name: '@deepseek-ai/dsh-host-directory-picker-browse'
+    - id: directory-picker-browse-surface
+      name: '@deepseek-ai/dsh-client-ui-directory-picker-browse'
+```
+
+两个包都要挂：宿主后端提供能力，客户端界面占据 ui-workspace 的目录选择插槽
+（它走 `slots.inject()`，所以 workspace 面板晚一点激活也能接上）。
+
+代价是 Mac 上也不再弹访达，改用网页选择器。这个 seam 是**每次启动解析一个后端**、
+不是按请求解析的，所以做不到「Mac 用原生、手机用网页」。
+
 ### 方式 A：`dsh plugin`（推荐，需要重启一次）
 
 ```bash
@@ -410,6 +446,9 @@ ln -sfn ~/.dsh/plugins/dsh-mobile-ui ~/.dsh/profiles/web/node_modules/@jianghuif
 
 - `node test/resolve.test.mjs`：29 条解析契约（全名 / 大小写 / 复合扩展名 / 点文件 /
   文件夹展开态 / 兜底）；
+- `picker`：点「添加工作区」后**页面里必须真的出现对话框**（有面包屑和目录列表）；
+  去掉那两行 patch 再跑一次作对照，断言页面里**没有**对话框 —— 这一对 A/B 证明的正是
+  「auto 选了 native，所以手机上什么都不发生」；
 - `icons`：真浏览器里逐行核对文件浏览器——每行都画上了图标、App 自带字形被隐藏、
   展开文件夹时 URL 从 `o=0` 变成 `o=1`、无网络失败；
   另外验过**降级路径**：把客户端指向一个不存在的路由时，所有行回到
