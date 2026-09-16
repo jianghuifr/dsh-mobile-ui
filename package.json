@@ -25,14 +25,15 @@
     "lib/",
     "assets/",
     "scripts/",
-    "test/",
+    "test/*.mjs",
     "docs/",
     "cordis.patch.yml",
     "README.md"
   ],
   "scripts": {
     "lint": "eslint .",
-    "test": "node --test",
+    "test": "node --test test/*.test.mjs",
+    "test:browser": "node test/browser/run.mjs",
     "check": "node scripts/check.mjs",
     "verify": "npm run check && npm run lint && npm test",
     "vendor-icons": "node scripts/vendor-icons.mjs",
